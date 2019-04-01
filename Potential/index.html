@@ -1,0 +1,171 @@
+<html>
+	<head>
+		<title>Robot Motion Planning and Control - Final Assignment</title>
+	</head>
+	<body style="background-color: #111111;">
+			<center><canvas id="canvas" width="900" height="800" onmouseup="mouseUp(event);"></canvas></center>
+			<div id='console' style="background-color: #000000; color: #FFFFFF; margin: auto; margin-top: 2px; height: 150px; width: 900px; overflow: scroll; font-family: Courier New"></div>
+		<script type="text/javascript" src="robot.js"></script>
+		<script type="text/javascript" src="map.js"></script>
+		<script type="text/javascript" src="pathfinders.js"></script>
+		<script type="text/javascript" src="potential.js"></script>
+		<script type="text/javascript" src="controller.js"></script>
+		<script type="text/javascript">
+		function console(txt) {
+			let console = document.getElementById('console'); 
+			let html = console.innerHTML;
+			console.innerHTML = html + txt + '<br>';
+			console.scrollTop = console.scrollHeight;
+		}
+		var canvas = document.getElementById('canvas');
+		var ctx = canvas.getContext('2d');
+
+		var width = canvas.width;
+		var height = canvas.height;
+		const diagonal = Math.round(Math.sqrt(Math.pow(width,2)+Math.pow(height,2)));
+
+		var simulating = false;
+
+		var dt = (1000/60)/1000; // time step
+
+		// initiate robot
+		var robots = [];
+		robots.push(new Robot(50, 50, dt));
+		robots.push(new Robot(100, 50, dt));
+		robots.push(new Robot(100, 50, dt));
+
+		// initialize map
+		var map = new Map();
+		map.defineMap(3);
+		
+		// initialize pathfinder (RRT, RRTsmart and RRTstar available)
+		var pathfinder = new RRTstar(map);
+
+		// initialize controller
+		var potentialController = new PotentialController(robots, pathfinder.path, map);
+
+		// update routine for the simulation
+		function update() {
+			potentialController.update();
+
+			let robots_all_stuck = true;
+			let robots_in_goal = true;
+			for(let i = 0; i < robots.length; i++) {
+				robots[i].update(map, robots);
+				if(!robots[i].notMoving())
+					robots_all_stuck = false;
+				if(!robots[i].isInGoal(pathfinder))
+					robots_in_goal = false;
+			}
+			if(robots_all_stuck) simulating = false;
+			if(robots_in_goal) simulating = false;
+		}
+
+		// draw routine for the simulation
+		function draw() {
+			ctx.fillStyle = '#000000';
+			ctx.fillRect(0,0,width, height);
+
+			map.draw(ctx);
+
+			pathfinder.drawGoal(ctx);
+			pathfinder.drawPath(ctx, '#00FF00');
+			
+			for(let i = 0; i < robots.length; i++) {
+				robots[i].drawTrace(ctx, "#0000FF");
+				robots[i].draw(ctx);
+			}
+
+			potentialController.drawWaypoint(ctx);
+		}
+	
+		// loop function
+		function loop() {
+			update();
+			draw();
+
+			if(simulating) setTimeout("loop();", dt*1000); // iteration at timestep milliseconds
+			else console("Simulation stopped!");
+		}
+
+		// start simulation using mouse down on canvas
+		function startSimulation() {
+			if(!simulating) loop();
+		}
+
+		function clear() {
+			ctx.fillStyle = '#000000';
+			ctx.fillRect(0,0,width, height);
+		}
+
+		// mouse up for start and end position
+		var mouse_clicks = 0;
+		console("Click once to set the start position, once more for the goal position. Once to generate the path and potential field. Once more to start the simulation.")
+		clear();
+		map.draw(ctx);
+
+		function mouseUp(event) {
+			let mouse_x = event.clientX - canvas.offsetLeft;
+			let mouse_y = event.clientY - canvas.offsetTop;
+
+			switch(mouse_clicks) {
+				case 0:
+					pathfinder.setStart(mouse_x, mouse_y);
+					robots[0].move(mouse_x - 20, mouse_y + 20, map);
+					robots[1].move(mouse_x + 20, mouse_y + 20, map);
+					robots[2].move(mouse_x, mouse_y - 20, map);
+					for(let i = 0; i < robots.length; i++) robots[i].draw(ctx);
+					break;
+				case 1:
+					pathfinder.setGoal(mouse_x - 25, mouse_y - 25, 50, 50);
+					pathfinder.drawGoal(ctx);
+					break;
+				case 2:
+					let current_time = new Date().getTime();
+					clear();
+					pathfinder.getGraph(ctx);
+					//pathfinder.drawGraph(ctx);
+					if(pathfinder.path.length == 0) {
+						console("No path found!");
+						mouse_clicks = 4;
+					}
+					
+					//pathfinder.drawGoal(ctx);
+					//pathfinder.drawPath(ctx);
+					pathfinder.optimize(2);
+					
+					let time = new Date().getTime() - current_time;
+					console("Pathfinding took: " + time + " ms");
+
+					current_time = new Date().getTime();
+					potentialController.generateStaticPotentialField(pathfinder.path);
+
+					time = new Date().getTime() - current_time;
+					console("Generating static potential field took: " + time + " ms");
+
+					pathfinder.drawPath(ctx);
+					potentialController.static_field.draw(ctx);
+
+					for(let i = 0; i < robots.length; i++) robots[i].draw(ctx);
+					break;
+				case 3:
+					simulating = true;
+					loop();
+					break;
+				case 4:
+					simulating = false;
+					document.getElementById('console').innerHTML = "";
+					mouse_clicks = -1;
+					console("Click once to set the start position, once more for the goal position. Once to generate the path and potential field. Once more to start the simulation.")
+					clear();
+					map.draw(ctx);
+					pathfinder.reset();
+					for(let i = 0; i < robots.length; i++) robots[i].reset(ctx);
+					break;
+			}
+
+			mouse_clicks++;
+		}	
+		</script>
+	</body>
+</html>

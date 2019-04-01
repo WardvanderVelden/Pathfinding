@@ -1,0 +1,136 @@
+<html>
+	<head>
+		<title>Robot Motion Planning and Control - Final Assignment</title>
+	</head>
+	<body style="background-color: #111111;">
+			<center><canvas id="canvas" width="900" height="800" onmouseup="mouseUp(event);"></canvas></center>
+			<div id='console' style="background-color: #000000; color: #FFFFFF; margin: auto; margin-top: 2px; height: 150px; width: 900px; overflow: scroll; font-family: Courier New"></div>
+		<script type="text/javascript" src="robot.js"></script>
+		<script type="text/javascript" src="map.js"></script>
+		<script type="text/javascript" src="pathfinders.js"></script>
+		<script type="text/javascript" src="controller.js"></script>
+		<script type="text/javascript">
+		function console(txt) {
+			let console = document.getElementById('console'); 
+			let html = console.innerHTML;
+			console.innerHTML = html + txt + '<br>';
+			console.scrollTop = console.scrollHeight;
+		}
+		var canvas = document.getElementById('canvas');
+		var ctx = canvas.getContext('2d');
+
+		var width = canvas.width;
+		var height = canvas.height;
+		const diagonal = Math.round(Math.sqrt(Math.pow(width,2)+Math.pow(height,2)));
+
+		var simulating = false;
+
+		var dt = (1000/60)/1000; // time step
+
+		// initiate robot
+		var robot = new Robot(50, 50, dt);
+
+		// initialize map
+		var map = new Map();
+		map.defineMap(3);
+		
+		// initialize pathfinder (RRT, RRTsmart and RRTstar available)
+		var pathfinder = new RRTstar(map);
+
+		// initialize controller
+		var controller = new Controller(robot, pathfinder.path);
+
+		// update routine for the simulation
+		function update() {
+			controller.update();
+			robot.update(map);
+
+			simulating = !robot.notMoving();
+		}
+
+		// draw routine for the simulation
+		function draw() {
+			// clear frame
+			ctx.fillStyle = '#000000';
+			ctx.fillRect(0,0,width, height);
+
+			map.draw(ctx);
+
+			pathfinder.drawGoal(ctx);
+			pathfinder.drawPath(ctx, '#00FF00');
+			
+			robot.drawTrace(ctx);
+			robot.draw(ctx);
+		}
+	
+		// loop function
+		function loop() {
+			update();
+			draw();
+
+			if(simulating) setTimeout("loop();", dt*1000); // iteration at timestep milliseconds
+			else console("Simulation stopped!");
+		}
+
+		// start simulation using mouse down on canvas
+		function startSimulation() {
+			if(!simulating) loop();
+		}
+
+		// mouse up for start and end position
+		mouse_clicks = 0;
+		ctx.fillStyle = '#000000'; ctx.fillRect(0,0,width, height);	map.draw(ctx);
+		console("Click at the start position, goal position, click once to calculate and once more to simulate!");
+		function mouseUp(event) {
+			let mouse_x = event.clientX - canvas.offsetLeft;
+			let mouse_y = event.clientY - canvas.offsetTop;
+
+			switch(mouse_clicks) {
+				case 0:
+					pathfinder.reset();
+					controller.reset();
+					controller.setPath(pathfinder.path);
+					robot.reset();
+					robot.x = mouse_x;
+					robot.y = mouse_y;
+					pathfinder.setStart(robot.x, robot.y);
+					robot.draw(ctx);
+					break;
+				case 1:
+					pathfinder.setGoal(mouse_x-25, mouse_y-25, 50, 50);
+					pathfinder.drawGoal(ctx);
+					break;
+				case 2:
+					// find path and optimize
+					let current_time = new Date().getTime();
+					pathfinder.getGraph(ctx);
+					pathfinder.drawGraph(ctx);
+					pathfinder.drawPath(ctx, '#FFFFFF');
+					pathfinder.optimize(2);
+					pathfinder.drawPath(ctx, '#FF00FF');
+					pathfinder.drawPathPoints(ctx);
+					robot.draw(ctx);
+					let time = new Date().getTime() - current_time;
+					console("Pathfinding took: " + time + " ms");
+					if(pathfinder.path.length === 0) { 
+						mouse_clicks = 4;
+						mouseUp();
+					}
+					break;
+				case 3:
+					startSimulation();
+					break;
+				case 4:
+					simulating = false;
+					document.getElementById('console').innerHTML = "";
+					ctx.fillStyle = '#000000'; ctx.fillRect(0,0,width, height);	map.draw(ctx);
+					console("Click at start position, goal position, once to calculate and once to simulate!");
+					mouse_clicks = -1;
+					break;
+			}
+
+			mouse_clicks++;
+		}	
+		</script>
+	</body>
+</html>
